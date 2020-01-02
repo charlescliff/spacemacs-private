@@ -103,6 +103,15 @@ comment box."
     (setq new-buffer-name (concat "cmake-" parent-dir))
     (rename-buffer new-buffer-name t)))
 
+(defun my-ts-mode-hook ()
+  (when (eq major-mode 'typescript-mode)
+    (progn
+      (setq imenu-create-index-function 'js2-imenu-make-index)
+
+      (with-eval-after-load 'flycheck
+
+        (add-to-list 'flycheck-disabled-checkers 'javascript-eslint)
+        (flycheck-disable-checker 'javascript-eslint)))))
 
 (defun my-js2-mode-hook ()
   (progn
@@ -234,3 +243,17 @@ comment box."
       (message "load tags for fireball engine repo...")
       ;; html project donot need C++ tags
       (setq tags-table-list (list (my-create-tags-if-needed "~/Github/fireball/engine/cocos2d")))))))
+
+(defun zilongshanren-refresh-imenu-index ()
+  (interactive)
+  (when (or (eq major-mode 'js2-mode)
+            (eq major-mode 'typescript-mode))
+    (progn
+      (setq imenu-create-index-function 'js2-imenu-make-index)
+
+      ;; (when (eq major-mode 'typescript-mode)
+      ;;   (setq imenu-create-index-function 'lsp--imenu-create-index))
+
+      (setq-local company-backends (remove 'company-lsp company-backends))
+      (setq-local company-backends '((company-dabbrev-code :with company-keywords company-etags)
+                                     company-files company-dabbrev)))))

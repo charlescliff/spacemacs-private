@@ -18,9 +18,8 @@
     org-pomodoro
     deft
     sound-wav
-    ;; (blog-admin :location (recipe
-    ;;                        :fetcher github
-    ;;                        :repo "codefalling/blog-admin"))
+    ob-typescript
+    evil-org
     ;; org-tree-slide
     ;; ox-reveal
     ;; worf
@@ -29,20 +28,16 @@
     )
   )
 
-(defun zilongshanren-org/init-blog-admin ()
-  (use-package blog-admin
-    :defer t
-    :commands blog-admin-start
-    :init
-    (progn
-      ;; do your configuration here
-      (setq blog-admin-backend-type 'hexo
-            blog-admin-backend-path blog-admin-dir
-            blog-admin-backend-new-post-with-same-name-dir nil
-            blog-admin-backend-hexo-config-file "_config.yml"
-            )
-      (add-hook 'blog-admin-backend-after-new-post-hook 'find-file)
-      )))
+(defun zilongshanren-org/post-init-evil-org ()
+  (defun evil-org--populate-navigation-bindings ()
+    "Configures gj/gk/gh/gl for navigation."
+    (let-alist evil-org-movement-bindings
+      (evil-define-key 'motion evil-org-mode-map
+        (kbd (concat "g" .left)) 'org-previous-visible-heading
+        (kbd (concat "g" .right)) 'org-next-visible-heading
+        (kbd (concat "g" .up)) 'org-backward-element
+        (kbd (concat "g" .down)) 'org-forward-element
+        (kbd (concat "g" (capitalize .left))) 'evil-org-top))))
 
 (defun zilongshanren-org/post-init-org-pomodoro ()
   (zilongshanren/pomodoro-notification))
@@ -54,6 +49,23 @@
   (add-hook 'org-mode-hook (lambda () (spacemacs/toggle-line-numbers-off)) 'append)
   (with-eval-after-load 'org
     (progn
+
+      ;; disable < auto pair for org mode
+      ;; disable {} auto pairing in electric-pair-mode for web-mode
+      (add-hook
+       'org-mode-hook
+       (lambda ()
+         (setq-local electric-pair-inhibit-predicate
+                     `(lambda (c)
+                        (if (char-equal c ?<) t (,electric-pair-inhibit-predicate c))))))
+
+      (require 'org-tempo)
+      ;; Allow multiple line Org emphasis markup.
+      ;; http://emacs.stackexchange.com/a/13828/115
+      (setcar (nthcdr 4 org-emphasis-regexp-components) 20) ;Up to 20 lines, default is just 1
+      ;; Below is needed to apply the modified `org-emphasis-regexp-components'
+      ;; settings from above.
+      (org-set-emph-re 'org-emphasis-regexp-components org-emphasis-regexp-components)
 
       ;; (defun th/org-outline-context-p ()
       ;;   (re-search-backward org-outline-regexp))
@@ -271,6 +283,7 @@
          (ruby . t)
          (shell . t)
          (dot . t)
+         (typescript . t)
          (js . t)
          (latex .t)
          (python . t)
@@ -281,18 +294,6 @@
 
 
       (require 'ox-md nil t)
-      ;; copy from chinese layer
-      (defadvice org-html-paragraph (before org-html-paragraph-advice
-                                            (paragraph contents info) activate)
-        "Join consecutive Chinese lines into a single long line without
-unwanted space when exporting org-mode to html."
-        (let* ((origin-contents (ad-get-arg 1))
-               (fix-regexp "[[:multibyte:]]")
-               (fixed-contents
-                (replace-regexp-in-string
-                 (concat
-                  "\\(" fix-regexp "\\) *\n *\\(" fix-regexp "\\)") "\\1\\2" origin-contents)))
-          (ad-set-arg 1 fixed-contents)))
 
       ;; define the refile targets
       (setq org-agenda-file-note (expand-file-name "notes.org" org-agenda-dir))
@@ -300,7 +301,11 @@ unwanted space when exporting org-mode to html."
       (setq org-agenda-file-journal (expand-file-name "journal.org" org-agenda-dir))
       (setq org-agenda-file-code-snippet (expand-file-name "snippet.org" org-agenda-dir))
       (setq org-default-notes-file (expand-file-name "gtd.org" org-agenda-dir))
+      (setq org-agenda-file-blogposts (expand-file-name "all-posts.org" org-agenda-dir))
       (setq org-agenda-files (list org-agenda-dir))
+
+      ;; C-n for the next org agenda item
+      (define-key org-agenda-mode-map (kbd "C-p") 'org-agenda-previous-item)
 
       (with-eval-after-load 'org-agenda
         (define-key org-agenda-mode-map (kbd "P") 'org-pomodoro)
@@ -336,6 +341,31 @@ unwanted space when exporting org-mode to html."
                entry (file+datetree org-agenda-file-journal)
                "* %?"
                :empty-lines 1)))
+
+      (with-eval-after-load 'org-capture
+        (defun org-hugo-new-subtree-post-capture-template ()
+          "Returns `org-capture' template string for new Hugo post.
+See `org-capture-templates' for more information."
+          (let* ((title (read-from-minibuffer "Post Title: ")) ;Prompt to enter the post title
+                 (fname (org-hugo-slug title)))
+            (mapconcat #'identity
+                       `(
+                         ,(concat "* TODO " title)
+                         ":PROPERTIES:"
+                         ,(concat ":EXPORT_FILE_NAME: " fname)
+                         ":END:"
+                         "\n\n")        ;Place the cursor here finally
+                       "\n")))
+
+        (add-to-list 'org-capture-templates
+                     '("h"              ;`org-capture' binding + h
+                       "Hugo post"
+                       entry
+                       ;; It is assumed that below file is present in `org-directory'
+                       ;; and that it has a "Blog Ideas" heading. It can even be a
+                       ;; symlink pointing to the actual location of all-posts.org!
+                       (file+headline org-agenda-file-blogposts "Blog Ideas")
+                       (function org-hugo-new-subtree-post-capture-template))))
 
       ;;An entry without a cookie is treated just like priority ' B '.
       ;;So when create new task, they are default 重要且紧急
@@ -516,6 +546,10 @@ holding contextual information."
   (use-package plain-org-wiki
     :init
     (setq pow-directory "~/org-notes")))
+
+(defun zilongshanren-org/init-ob-typescript ()
+  (use-package ob-typescript
+    :init))
 
 (defun zilongshanren-org/init-worf ()
   (use-package worf
